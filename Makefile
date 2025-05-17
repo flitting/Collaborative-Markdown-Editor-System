@@ -2,17 +2,19 @@
 CC := gcc
 #CFLAGS := -Wall -Wextra
 CFLAGS := -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable
+TSAN_FLAGS := -fsanitize=thread
 NAME ?= ryan
 
 all: server client
 
 server: 
-	$(CC) $(CFLAGS) source/server.c ./source/utils.c -o server
-	./server 100 & echo $$! > server.pid
+	$(CC) $(CFLAGS) $(TSAN_FLAGS) source/server.c ./source/utils.c -o server
+	./tsan_server 100 & echo $$! > server.pid
+
 client:
-	$(CC) $(CFLAGS) source/client.c ./source/utils.c -o client
+	$(CC) $(CFLAGS) $(TSAN_FLAGS) source/client.c ./source/utils.c -o client
 	$(eval PID := $(shell cat server.pid))
-	./client $(PID) $(NAME)
+	./tsan_client $(PID) $(NAME)
 
 markdown.o:
 

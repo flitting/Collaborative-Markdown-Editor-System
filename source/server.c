@@ -84,7 +84,22 @@ void * client_thread(void * arg){
         }
         //send doc length
         //send full document contents
+        send_full_document();
+        while(1){
         //edit-command loop
+        //interact with command 
+
+        // check command type
+        // check command permission
+        // get timestamp
+        // check delete error
+        // run command
+
+
+        // send sync to all client in interval
+
+        }
+
     }
 
 

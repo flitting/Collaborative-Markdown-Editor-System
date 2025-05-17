@@ -14,4 +14,8 @@
 char *read_full_message(int fd);
 int search_roles(char * client_name);
 
+int send_full_document();//todo
+
+
+int receive_full_document();
 #endif // UTILS_H

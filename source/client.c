@@ -96,9 +96,16 @@ int main(int argc, char *argv[]){
             close(c2s);
             return 0;
         }
-        
+        receive_full_document();
+
+        while(1){
+        //input command to server and sync from server
 
 
+
+
+
+        }
 
 
         //debug

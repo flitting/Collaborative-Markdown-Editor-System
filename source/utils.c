@@ -91,6 +91,15 @@ int search_roles(char * client_name){
     }
     fclose(file);
     return 0;
+}
 
 
+int send_full_document(){
+    // todo send document;
+    return 0;
+}
+
+
+int receive_full_document(){
+    return 0;
 }
