@@ -11,8 +11,10 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
+#include <sys/types.h>
 
-#include <extension.h>
+
+#include "extension.h"
 
 #define MAX_CHUNK_SIZE 2048
 
@@ -25,20 +27,20 @@ enum STATUS{
     DELETE_NEW,
     INSERT_NEW,
     MODIFIED_NEW,
-    DEL_INS,
-    DEL_MOD,
-    MOD_INS,
+    DEL_INS,// del  insertion between N-1 and N version
+    DEL_MOD,// del modified between N-1 and N version
+    MOD_INS, 
 };
 
 
 
 // a command (especial deletion) should be done in one chunk
-typedef struct{
+typedef struct Chunk{
     uint64_t chunk_length;// total length,memory length
     uint64_t chunk_old_length; // effect char length for version N-1,used for quick index
     uint64_t chunk_new_length; // effect char length for version N, used for quick index
-    chunk * next;
-    chunk * last;
+    struct Chunk * next;
+    struct Chunk * last;
     char * content;// the latest content with all accpected changes, contain deleted chars
     char * status;// consists of STATUS and \0
 } chunk;
@@ -48,11 +50,10 @@ typedef struct{
 
 typedef struct {
     uint64_t version;//current version for last increment, one after the N-1;
-    uint64_t chunk_num;
     // content between start and end chunk , version is at N-1 if COMP9017
     chunk * start_empty_chunk;
     chunk * end_empty_chunk;
-    const char * flatten_cache;// cache for flatten, content for version N;
+    char * flatten_cache;// cache for flatten, content for version N;
 } document;
 
 // Functions from here onwards.
@@ -65,9 +66,17 @@ chunk *chunk_merge(chunk *start_chunk, chunk *end_chunk);
 
 chunk * find_pos_chunk(document* doc, size_t pos, size_t *left_pos_ptr, int version);
 size_t find_logical_index_map(chunk *ck, int version, size_t *map, size_t max_len);
-void chunk_insert(chunk* ck, size_t pos, char *content, int version);
-void chunk_change_char(chunk* ck, size_t pos, char ch, int version);
+
+void find_insert_point(chunk *ck, size_t base_index, int direction, chunk **out_chunk, size_t *out_index,int version);
+void find_insert_point(chunk *ck, size_t base_index, int direction, chunk **out_chunk, size_t *out_index,int version);
+
+
+int chunk_insert(chunk* ck, size_t pos, char *content, int version,int direction);
+int chunk_change_char(chunk* ck, size_t pos, char ch, int version);
 int chunk_mark_delete(chunk* ck, size_t pos, size_t len, int version);
 
+void update_chunk_lengths(chunk* ck);
+
+char * document_serialize(document *doc);
 
 #endif

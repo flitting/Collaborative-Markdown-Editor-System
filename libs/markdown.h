@@ -37,7 +37,7 @@ char *markdown_flatten(const document *doc);
 // === Versioning ===
 void markdown_increment_version(document *doc);
 
-
+int markdown_version_check(document *doc ,size_t version);
 
 
 
