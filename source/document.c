@@ -198,8 +198,10 @@ int chunk_split_at(chunk *original_obj, size_t pos, chunk *former_chunk, chunk *
     if (next_chunk) {
         next_chunk->last = right_chunk ? right_chunk : left_chunk;
     }
-
-    chunk_free(original_obj);
+    // manually free it
+    free(original_obj->content);
+    free(original_obj->status);
+    free(original_obj);
     return 0;
 }
 
@@ -248,6 +250,7 @@ chunk *chunk_merge(chunk *start_chunk, chunk *end_chunk) {
 // case 2: reach the doc end
 // find pos just behind the former pos char
 chunk * find_pos_chunk(document* doc, size_t pos, size_t *left_pos_ptr, int version) {
+    // it accepts and returns the logical pos
     if(pos == 0){
         *left_pos_ptr = 0;
         return doc->start_empty_chunk->next;
@@ -339,7 +342,7 @@ size_t find_logical_index_map(chunk *ck, int version, size_t *map, size_t max_le
 // func for chunk_insert
 int is_deleted_status(char s,int version) {
     if(version==1)return s == DELETE_NEW || s == DEL_INS || s == DEL_MOD;
-    else return s == DELETE_OLD || DELETE_NEW || s == DEL_INS || s == DEL_MOD;
+    else return s == DELETE_OLD || s == DELETE_NEW || s == DEL_INS || s == DEL_MOD;
 }
 
 // func for search the first non deleting char before insert into delete range
@@ -405,6 +408,7 @@ void find_insert_point(chunk *ck, size_t base_index, int direction, chunk **out_
                 return;
             }
         }
+        
         if (ck->next && ck->next->next != NULL) {
             find_insert_point(ck->next, 0, direction, out_chunk, out_index,version);
         } else {
@@ -422,7 +426,7 @@ void find_insert_point(chunk *ck, size_t base_index, int direction, chunk **out_
 // position. """
 int chunk_insert(chunk* ck, size_t pos, char *content, int version, int direction) {
     // pos char can be \0
-
+    // I need to considering deleted chars,if so ,skip it in the direction
     
     
     if (version == 2) return -1;
@@ -441,10 +445,21 @@ int chunk_insert(chunk* ck, size_t pos, char *content, int version, int directio
         return -3; // out of range
     }
     size_t base_index;
-    if(logical_count == 0||pos == 0){
-        base_index = 0;
-        direction =0;
-    }else {
+    if(logical_count == 0 || pos == 0){
+        if(ck->last->last != NULL){
+            logical_count = find_logical_index_map(ck->last, version, index_map, MAX_CHUNK_SIZE);
+            // logical count for last chunk, it can be zero
+            pos += logical_count;
+            // find in last chunk
+            chunk_insert(ck->last,pos,content,version,direction);
+
+        }else{
+            base_index = 0;
+            direction =0;
+        }
+
+
+    }else{
         base_index = index_map[pos-1]+1;
     }
 
@@ -485,9 +500,19 @@ int chunk_insert(chunk* ck, size_t pos, char *content, int version, int directio
     insert_chunk->status[new_len] = '\0';
     insert_chunk->chunk_length = new_len + 1;
 
-    if (insert_chunk->chunk_length >= MAX_CHUNK_SIZE) {
+
+    char * newline = "\\n";
+    if (strcmp(newline,content)==0){
+        if(real_insert_pos!=0){
+            // splite the chunk with newline;
+            int result = chunk_split_at(insert_chunk,real_insert_pos,insert_chunk->last,insert_chunk->next);
+            if(result){
+                return -5;
+            }
+        }
+    }else if (insert_chunk->chunk_length >= MAX_CHUNK_SIZE) {
         int result = chunk_split(insert_chunk, insert_chunk->last, insert_chunk->next);
-        if (!result){
+        if (result){
             return -5;
         }
     }
@@ -560,7 +585,7 @@ int chunk_mark_delete(chunk* ck, size_t pos, size_t len, int version) {
         }
     }
 
-    return deleted;
+    return 0;
 }
 
 void update_chunk_lengths(chunk* ck) {

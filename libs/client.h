@@ -7,3 +7,4 @@
 #include <fcntl.h>
 #include <string.h>
 #include "utils.h"
+#include "markdown.h"

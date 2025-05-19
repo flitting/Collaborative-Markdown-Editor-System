@@ -103,3 +103,4 @@ int send_full_document(){
 int receive_full_document(){
     return 0;
 }
+

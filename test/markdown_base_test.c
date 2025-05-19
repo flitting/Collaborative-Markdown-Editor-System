@@ -1,144 +1,272 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "../libs/markdown.h"
 
-void print_chunk_memory(chunk* obj_chunk){
-    printf("content: %s\n",obj_chunk->content);
-    char result[strlen(obj_chunk->status)+1];
-    for(int i = 0;i<strlen(obj_chunk->status);i++){
-        result[i] = obj_chunk->status[i]+'0';
+// Helper to print a chunk's memory details
+void print_chunk_memory(chunk* obj_chunk) {
+    if (!obj_chunk) return;
+    printf("  content: \"%s\"\n", obj_chunk->content);
+    size_t len = strlen(obj_chunk->status);
+    char result[len + 1];
+    for (size_t i = 0; i < len; i++) {
+        result[i] = obj_chunk->status[i] + '0';
     }
-    result[strlen(obj_chunk->status)] = '\0';
-    printf("status: %s\n",result);
+    result[len] = '\0';
+    printf("  status: \"%s\"\n", result);
+}
 
+// Print all chunks for detailed inspection
+void print_all_chunks(document *doc) {
+    printf("=== CHUNK DETAILS ===\n");
+    chunk *cur = doc->start_empty_chunk;
+    while (cur) {
+        print_chunk_memory(cur);
+        cur = cur->next;
+    }
+    printf("=====================\n");
 }
 
 int main(void) {
-    // Step 1: Initialize Document
+    int errors = 0;
     document *doc = markdown_init();
+    
+    // Increment to set an initial (empty) version.
     markdown_increment_version(doc);
-    char *initial = markdown_flatten(doc);
-    printf("Initial flatten: '%s'\n", initial);
-    free(initial);
-    // Step 2: Test first insertion
-    const char *content1 = "Hello ";
-    int ins_result1 = markdown_insert(doc, doc->version, 0, content1);
-    if (ins_result1 != 0) {
-        printf("Insertion 1 failed with error code: %d\n", ins_result1);
+    char *flat = markdown_flatten(doc);
+    if (strcmp(flat, "") == 0)
+        printf("Pass: Initial flatten empty [Expected empty]\n");
+    else {
+        printf("Fail: Initial flatten expected empty, got \"%s\"\n", flat);
+        print_all_chunks(doc);
+        errors++;
     }
-    markdown_increment_version(doc);
-
-    char *after_first_insert = markdown_flatten(doc);
-    printf("After first insert: '%s'\n", after_first_insert);
-    free(after_first_insert);
-
-    // Step 3: Test second insertion
-    const char *content2 = "World!";
-    // Insert at position 6 after "Hello "
-    int ins_result2 = markdown_insert(doc, doc->version, 6, content2);
-    if (ins_result2 != 0) {
-        printf("Insertion 2 failed with error code: %d\n", ins_result2);
-    }
-    markdown_increment_version(doc);
-
-    char *after_second_insert = markdown_flatten(doc);
-    printf("After second insert: '%s'\n", after_second_insert);
-    free(after_second_insert);
-
-    // Step 4: Test newline insertion (formatting command)
-    // Insert a newline (i.e. "\n") at position 5
-    int newline_result = markdown_newline(doc, doc->version, 5);
-    if (newline_result != 0) {
-        printf("Newline insertion failed with error code: %d\n", newline_result);
-    }
-    markdown_increment_version(doc);
-
-    char *after_newline = markdown_flatten(doc);
-    printf("After newline insertion: '%s'\n", after_newline);
-    free(after_newline);
-
-    // Step 5: Test deletion command, delete 3 characters from position 0
-    int delete_result = markdown_delete(doc, doc->version, 0, 3);
-    if (delete_result < 0) {
-        printf("Deletion failed with error code: %d\n", delete_result);
-    }else{
+    free(flat);
+    
+    // Test 1: Basic Insertion at beginning.
+    const char *test1 = "Hello";
+    int res = markdown_insert(doc, doc->version, 0, test1);
+    if (res == 0) {
         markdown_increment_version(doc);
-
-        char *after_deletion = markdown_flatten(doc);
-        printf("After deletion: '%s'\n", after_deletion);
-        chunk * obj_chunk = doc->start_empty_chunk->next;
-        print_chunk_memory(obj_chunk);
-
-        free(after_deletion);
-    }
-        // Step 6: Try using previous version for insertion
-    const char *content3 = "TestOldVersion ";
-    int ins_old_version = markdown_insert(doc, doc->version-1, 0, content3);
-    if (ins_old_version != 0) {
-        printf("Old version insertion failed with error code: %d\n", ins_old_version);
+        flat = markdown_flatten(doc);
+        if (strcmp(flat, "Hello") == 0)
+            printf("Pass: Insert at beginning [Inserted \"Hello\"]\n");
+        else {
+            printf("Fail: Insert at beginning expected \"Hello\", got \"%s\"\n", flat);
+            print_all_chunks(doc);
+            errors++;
+        }
+        free(flat);
     } else {
-        markdown_increment_version(doc);
-        char *after_old_insert = markdown_flatten(doc);
-        printf("After insertion with version-1: '%s'\n", after_old_insert);
-        chunk * obj_chunk = doc->start_empty_chunk->next;
-        print_chunk_memory(obj_chunk);
-
-        free(after_old_insert);
+        printf("Fail: Insertion at beginning returned error %d\n", res);
+        print_all_chunks(doc);
+        errors++;
     }
-
-    // Step 7: Try newline using version-1
-    int newline_old_version = markdown_newline(doc, doc->version -1, 2);//wrong
-    if (newline_old_version != 0) {
-        printf("Old version newline failed with error code: %d\n", newline_old_version);
+    
+    // Test 2: Append Insertion (at end)
+    // Current flatten: "Hello" (length=5) -> Insert at pos 5.
+    const char *test2 = " World";
+    res = markdown_insert(doc, doc->version, 5, test2);
+    if (res == 0) {
+        markdown_increment_version(doc);
+        flat = markdown_flatten(doc);
+        if (strcmp(flat, "Hello World") == 0)
+            printf("Pass: Append insertion [Appended \" World\"]\n");
+        else {
+            printf("Fail: Append insertion expected \"Hello World\", got \"%s\"\n", flat);
+            print_all_chunks(doc);
+            errors++;
+        }
+        free(flat);
     } else {
-        markdown_increment_version(doc);
-        char *after_old_newline = markdown_flatten(doc);
-        printf("After newline with version-1: '%s'\n", after_old_newline);
-
-        chunk * obj_chunk = doc->start_empty_chunk->next;
-        print_chunk_memory(obj_chunk);
-
-        free(after_old_newline);
+        printf("Fail: Append insertion returned error %d\n", res);
+        print_all_chunks(doc);
+        errors++;
     }
-
-    // Step 8: Try delete using version-1
-    int del_old_version = markdown_delete(doc, doc->version - 1, 0, 5);
-    if (del_old_version < 0) {
-        printf("Old version deletion failed with error code: %d\n", del_old_version);
+    
+    // Test 3: Insertion in the middle.
+    // Insert " dear" at pos 5 -> Expected: "Hello dear World"
+    const char *test3 = " dear";
+    res = markdown_insert(doc, doc->version, 5, test3);
+    if (res == 0) {
+        markdown_increment_version(doc);
+        flat = markdown_flatten(doc);
+        if (strcmp(flat, "Hello dear World") == 0)
+            printf("Pass: Insertion in the middle [Inserted \" dear\" at pos 5]\n");
+        else {
+            printf("Fail: Middle insertion expected \"Hello dear World\", got \"%s\"\n", flat);
+            print_all_chunks(doc);
+            errors++;
+        }
+        free(flat);
     } else {
+        printf("Fail: Insertion in the middle returned error %d\n", res);
+        print_all_chunks(doc);
+        errors++;
+    }
+    
+    // Test 4: Deletion in the middle.
+    // Delete " dear" (5 chars) starting at pos 5 -> Expected: "Hello World"
+    res = markdown_delete(doc, doc->version, 5, 5);
+    if (res == 0) {
         markdown_increment_version(doc);
-        char *after_old_delete = markdown_flatten(doc);
-        printf("After delete with version-1: '%s'\n", after_old_delete);// wrong?
-        free(after_old_delete);
+        flat = markdown_flatten(doc);
+        if (strcmp(flat, "Hello World") == 0)
+            printf("Pass: Deletion in middle [Deleted \" dear\"]\n");
+        else {
+            printf("Fail: Deletion expected \"Hello World\", got \"%s\"\n", flat);
+            print_all_chunks(doc);
+            errors++;
+        }
+        free(flat);
+    } else {
+        printf("Fail: Deletion in middle returned error %d\n", res);
+        print_all_chunks(doc);
+        errors++;
+    }
+    
+    // Test 5: Invalid insertion (position too large).
+    const char *test_invalid = "Invalid";
+    int invalid_insert = markdown_insert(doc, doc->version, 1000, test_invalid);
+    if (invalid_insert != 0)
+        printf("Pass: Invalid insertion correctly failed with error code: %d [Pos 1000 out-of-bound]\n", invalid_insert);
+    else {
+        printf("Fail: Invalid insertion expected failure but returned success\n");
+        print_all_chunks(doc);
+        errors++;
+    }
+    
+    // Test 6: Invalid deletion (range too long).
+    int invalid_delete = markdown_delete(doc, doc->version, 0, 1000);
+    if (invalid_delete >= 0)
+        printf("Pass: Invalid deletion correctly succeeded [Range too long handled gracefully]\n");
+    else {
+        printf("Fail: Invalid deletion expected success but returned error code: %d\n", invalid_delete);
+        print_all_chunks(doc);
+        errors++;
     }
 
-    // Step 9: Try invalid insert (position too large)
-    const char *invalid_content = "Invalid";
-    int invalid_insert = markdown_insert(doc, doc->version, 1000, invalid_content);
-    if (invalid_insert != 0) {
-        printf("Invalid insertion correctly failed with error code: %d\n", invalid_insert);
-    }
-
-    // Step 10: Try invalid delete (length too long)
-    int delete_overflow_test = markdown_delete(doc, doc->version, 0, 1000);
-    if (delete_overflow_test < 0) {
-        printf("deletion failed with error code: %d\n", delete_overflow_test);
-    }else{
+    const char *undo = "Hello World";
+    markdown_insert(doc, doc->version, 0, undo);
+    
+    // Test 7: Newline insertion at beginning.
+    // Current flatten: "Hello World" -> Expected: "\\nHello World"
+    res = markdown_newline(doc, doc->version, 0);
+    if (res == 0) {
         markdown_increment_version(doc);
-        char *overflow_delete = markdown_flatten(doc);
-        printf("delete_overflow: '%s'\n", overflow_delete);//
-        free(overflow_delete);
+        flat = markdown_flatten(doc);
+        if (strcmp(flat, "\\nHello World") == 0)
+            printf("Pass: Newline insertion at beginning [Inserted newline at pos 0]\n");
+        else {
+            printf("Fail: Newline insertion (beginning) expected \"\\nHello World\", got \"%s\"\n", flat);
+            print_all_chunks(doc);
+            errors++;
+        }
+        free(flat);
+    } else {
+        printf("Fail: Newline insertion at beginning returned error %d\n", res);
+        print_all_chunks(doc);
+        errors++;
     }
-
-    // Step 11: Try newline at invalid position 
-    // it should return -3
-    int invalid_newline = markdown_newline(doc, doc->version, 999);
-    if (invalid_newline != 0) {
-        printf("Invalid newline insertion correctly failed with error code: %d\n", invalid_newline);
+    
+    // Test 8: Newline insertion at end.
+    // Current flatten: "\\nHello World" (length 12) -> Expected: "\\nHello World\\n"
+    res = markdown_newline(doc, doc->version, 13);
+    if (res == 0) {
+        markdown_increment_version(doc);
+        flat = markdown_flatten(doc);
+        if (strcmp(flat, "\\nHello World\\n") == 0)
+            printf("Pass: Newline insertion at end [Inserted newline at pos 12]\n");
+        else {
+            printf("Fail: Newline insertion (end) expected \"\\nHello World\\n\", got \"%s\"\n", flat);
+            print_all_chunks(doc);
+            errors++;
+        }
+        free(flat);
+    } else {
+        printf("Fail: Newline insertion at end returned error %d\n", res);
+        print_all_chunks(doc);
+        errors++;
     }
-
-
-    // Cleanup
+    
+    // Test 9: Formatting across chunk boundaries.
+    // Create a new document to stress test chunk_insert skipping deletion chars across chunks.
+    markdown_free(doc);
+    doc = markdown_init();
+    markdown_increment_version(doc);
+    // Insert "ABCDEFG"
+    const char *str_val = "ABCDEFG";
+    res = markdown_insert(doc, doc->version, 0, str_val);
+    if (res == 0) {
+        markdown_increment_version(doc);
+        flat = markdown_flatten(doc);
+        if (strcmp(flat, "ABCDEFG") == 0)
+            printf("Pass: Insertion for multi-chunk test [Inserted \"ABCDEFG\"]\n");
+        else {
+            printf("Fail: Multi-chunk insertion expected \"ABCDEFG\", got \"%s\"\n", flat);
+            print_all_chunks(doc);
+            errors++;
+        }
+        free(flat);
+    } else {
+        printf("Fail: Multi-chunk insertion returned error %d\n", res);
+        print_all_chunks(doc);
+        errors++;
+    }
+    // Delete "BCD" (from pos 1, len 3) -> Expected: "AEFG"
+    res = markdown_delete(doc, doc->version, 1, 3);
+    if (res == 0) {
+        markdown_increment_version(doc);
+        flat = markdown_flatten(doc);
+        if (strcmp(flat, "AEFG") == 0)
+            printf("Pass: Deletion across chunks [Deleted \"BCD\"]\n");
+        else {
+            printf("Fail: Deletion across chunks expected \"AEFG\", got \"%s\"\n", flat);
+            print_all_chunks(doc);
+            errors++;
+        }
+        free(flat);
+    } else {
+        printf("Fail: Deletion across chunks returned error %d\n", res);
+        print_all_chunks(doc);
+        errors++;
+    }
+    // Insert "123" at pos 1 -> Expected: "A123EFG"
+    res = markdown_insert(doc, doc->version, 1, "123");
+    if (res == 0) {
+        markdown_increment_version(doc);
+        flat = markdown_flatten(doc);
+        if (strcmp(flat, "A123EFG") == 0)
+            printf("Pass: Insertion after deletion across chunks [Inserted \"123\" at pos 1]\n");
+        else {
+            printf("Fail: Insertion after deletion expected \"A123EFG\", got \"%s\"\n", flat);
+            print_all_chunks(doc);
+            errors++;
+        }
+        free(flat);
+    } else {
+        printf("Fail: Insertion after deletion across chunks returned error %d\n", res);
+        print_all_chunks(doc);
+        errors++;
+    }
+    
+    // Test 10: Versioning test.
+    // Attempt an operation with an outdated version; expect failure.
+    res = markdown_insert(doc, doc->version - 2, 0, "Outdated ");
+    if (res != 0)
+        printf("Pass: Outdated version insertion correctly failed with error code: %d [Version check]\n", res);
+    else {
+        printf("Fail: Outdated version insertion expected failure but returned success\n");
+        print_all_chunks(doc);
+        errors++;
+    }
+    
+    // Final summary.
+    if (errors == 0)
+        printf("Pass: All tests passed.\n");
+    else
+        printf("Fail: Total %d tests failed.\n", errors);
+    
     markdown_free(doc);
     return 0;
 }

@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include "utils.h"
+#include "markdown.h"
 
 void handle_client_sig(int sig, siginfo_t *info, void * context);
 void * client_thread(void * arg);

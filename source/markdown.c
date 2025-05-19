@@ -37,9 +37,11 @@ void markdown_free(document *doc){
 // -3 wrong range
 // -4 wrong permission  as no user data in doc, it can't be used
 // -5 other reasons
+// -6 unrecovered error
 
 // === Edit Commands ===
 int markdown_insert(document *doc, uint64_t version, size_t pos, const char *content){
+    // the pos should always the logical pos
     int version_num = markdown_version_check(doc,version);
     if (version_num < 0) return -1;//wrong version
     size_t left_pos = pos;
@@ -64,6 +66,7 @@ int markdown_delete(document *doc, uint64_t version, size_t pos, size_t len){
 
 // === Formatting Commands ===
 int markdown_newline(document *doc, size_t version, size_t pos){
+    // all effect newline should add from here.
     int version_num = markdown_version_check(doc,version);
     if (version_num < 0) return -1;//wrong version
     
@@ -79,9 +82,10 @@ int markdown_newline(document *doc, size_t version, size_t pos){
     char * insert_newline = (char*)malloc(strlen(newline)+1);
     strcpy(insert_newline,newline);
     //debug
-    printf("debug newline insert pos %d\n",left_pos);
+    printf("debug newline insert pos %ld\n",left_pos);
     int result_num = chunk_insert(obj,left_pos,insert_newline,version_num,0);
     free(insert_newline);
+
     return result_num;
 
 }
@@ -89,6 +93,7 @@ int markdown_heading(document *doc, uint64_t version, size_t level, size_t pos){
     int version_num = markdown_version_check(doc,version);
     if (version_num < 0) return -1;//wrong version
     if(level==0 ||level >3) return -3;//out of range
+
 
     size_t left_pos = pos;
     chunk * obj = find_pos_chunk(doc,pos,&left_pos,version_num);
@@ -105,18 +110,243 @@ int markdown_heading(document *doc, uint64_t version, size_t level, size_t pos){
 
     int result_num = chunk_insert(obj,left_pos,insert_heading,version_num,0);
     free(insert_heading);
+    // block level element
+    if (pos !=0 && !result_num){
+        // insert a newline
+        int newline_result = markdown_newline(doc,version,pos);
+        if(newline_result) return -6;
+    }
+
+
     return result_num;
 
     
 }
-int markdown_bold(document *doc, uint64_t version, size_t start, size_t end);
-int markdown_italic(document *doc, uint64_t version, size_t start, size_t end);
-int markdown_blockquote(document *doc, uint64_t version, size_t pos);
+int markdown_bold(document *doc, uint64_t version, size_t start, size_t end){
+    int version_num = markdown_version_check(doc,version);
+    if (version_num < 0) return -1;//wrong version
+    if(start>=end){
+        return -3;
+    }
+    
+    // add end first to prevent memory change in range error
+    size_t left_end_pos = end;
+    chunk * end_obj = find_pos_chunk(doc,end,&left_end_pos,version_num);
+    if (end_obj == NULL) {
+        return -3;          // out-of-range cursor
+    }
+    size_t left_start_pos = start;
+    chunk* start_obj = find_pos_chunk(doc,start,&left_start_pos,version_num);
+    if (start_obj == NULL) {
+        return -3;          // out-of-range cursor
+    }
+
+    char * two_stars = (char*)malloc(3);
+    two_stars[0]='*';
+    two_stars[1]='*';
+    two_stars[2]='\0';
+    // if meet delete char, search to left
+    int end_result = chunk_insert(end_obj,left_end_pos,two_stars,version_num,0);
+    if(end_result){
+        free(two_stars);
+        return end_result; // error handle
+    }
+    // search to right
+    int start_result = chunk_insert(start_obj,left_start_pos,two_stars,version_num,1);
+    free(two_stars);
+    if (start_result){
+        return -6; // ojb_end memory done but start un done, should exit
+    }
+
+    
+
+    return 0;
+}
+int markdown_italic(document *doc, uint64_t version, size_t start, size_t end){
+    int version_num = markdown_version_check(doc,version);
+    if (version_num < 0) return -1;//wrong version
+    if(start>=end){
+        return -3;
+    }
+    
+    // add end first to prevent memory change in range error
+    size_t left_end_pos = end;
+    chunk * end_obj = find_pos_chunk(doc,end,&left_end_pos,version_num);
+    if (end_obj == NULL) {
+        return -3;          // out-of-range cursor
+    }
+    size_t left_start_pos = start;
+    chunk* start_obj = find_pos_chunk(doc,start,&left_start_pos,version_num);
+    if (start_obj == NULL) {
+        return -3;          // out-of-range cursor
+    }
+
+    char * star = (char*)malloc(2);
+    star[0]='*';
+    star[1]='\0';
+    // if meet delete char, search to left
+    int end_result = chunk_insert(end_obj,left_end_pos,star,version_num,0);
+    if(end_result){
+        free(star);
+        return end_result; // error handle
+    }
+    // search to right
+    int start_result = chunk_insert(start_obj,left_start_pos,star,version_num,1);
+    free(star);
+    if (start_result){
+        return -6; // ojb_end memory done but start un done, should exit
+    }
+
+   
+
+    return 0;
+}
+int markdown_blockquote(document *doc, uint64_t version, size_t pos){
+    int version_num = markdown_version_check(doc,version);
+    if (version_num < 0) return -1;//wrong version
+    size_t left_pos = pos;
+    chunk * obj = find_pos_chunk(doc,pos,&left_pos,version_num);
+    if (obj == NULL) {
+        return -3;          // out-of-range cursor
+    }
+
+    char * blockquote = (char * )malloc(3);
+    blockquote[0] = '>';
+    blockquote[1] = ' ';
+    blockquote[2] = '\0';
+
+    int result_num = chunk_insert(obj,left_pos,blockquote,version_num,0);
+    free(blockquote);
+    // block level element
+    if (pos !=0 && !result_num){
+        // insert a newline
+        int newline_result = markdown_newline(doc,version,pos);
+        if(newline_result) return -6;
+    }
+
+
+    return result_num;
+}
 int markdown_ordered_list(document *doc, uint64_t version, size_t pos);
-int markdown_unordered_list(document *doc, uint64_t version, size_t pos);
-int markdown_code(document *doc, uint64_t version, size_t start, size_t end);
-int markdown_horizontal_rule(document *doc, uint64_t version, size_t pos);
-int markdown_link(document *doc, uint64_t version, size_t start, size_t end, const char *url);
+int markdown_unordered_list(document *doc, uint64_t version, size_t pos){
+    int version_num = markdown_version_check(doc,version);
+    if (version_num < 0) return -1;//wrong version
+    size_t left_pos = pos;
+    chunk * obj = find_pos_chunk(doc,pos,&left_pos,version_num);
+    if (obj == NULL) {
+        return -3;          // out-of-range cursor
+    }
+
+    char * prefix = (char * )malloc(3);
+    prefix[0] = '-';
+    prefix[1] = ' ';
+    prefix[2] = '\0';
+
+    int result_num = chunk_insert(obj,left_pos,prefix,version_num,0);
+    free(prefix);
+    // block level element
+    if (pos !=0 && !result_num){
+        // insert a newline
+        int newline_result = markdown_newline(doc,version,pos);
+        if(newline_result) return -6;
+    }
+    return result_num;
+}
+int markdown_code(document *doc, uint64_t version, size_t start, size_t end){
+    int version_num = markdown_version_check(doc,version);
+    if (version_num < 0) return -1;//wrong version
+    if(start>=end){
+        return -3;
+    }
+    
+    // add end first to prevent memory change in range error
+    size_t left_end_pos = end;
+    chunk * end_obj = find_pos_chunk(doc,end,&left_end_pos,version_num);
+    if (end_obj == NULL) {
+        return -3;          // out-of-range cursor
+    }
+    size_t left_start_pos = start;
+    chunk* start_obj = find_pos_chunk(doc,start,&left_start_pos,version_num);
+    if (start_obj == NULL) {
+        return -3;          // out-of-range cursor
+    }
+
+    char * backtick = (char*)malloc(2);
+    backtick[0]='`';
+    backtick[1]='\0';
+    // if meet delete char, search to left
+    int end_result = chunk_insert(end_obj,left_end_pos,backtick,version_num,0);
+    if(end_result){
+        free(backtick);
+        return end_result; // error handle
+    }
+    // search to right
+    int start_result = chunk_insert(start_obj,left_start_pos,backtick,version_num,1);
+    free(backtick);
+    if (start_result){
+        return -6; // ojb_end memory done but start un done, should exit
+    }
+
+    
+
+    return 0;
+}
+int markdown_horizontal_rule(document *doc, uint64_t version, size_t pos){
+    int result_num = markdown_insert(doc,version,pos,"---");
+    if (result_num) return result_num;
+    if (pos !=0){
+        // insert a newline
+        int newline_result = markdown_newline(doc,version,pos);
+        if(newline_result) return -6;
+    }
+    return result_num;
+}
+int markdown_link(document *doc, uint64_t version, size_t start, size_t end, const char *url){
+    int version_num = markdown_version_check(doc,version);
+    if (version_num < 0) return -1;//wrong version
+    if(start>=end){
+        return -3;
+    }
+    
+    // add end first to prevent memory change in range error
+    size_t left_end_pos = end;
+    chunk * end_obj = find_pos_chunk(doc,end,&left_end_pos,version_num);
+    if (end_obj == NULL) {
+        return -3;          // out-of-range cursor
+    }
+    size_t left_start_pos = start;
+    chunk* start_obj = find_pos_chunk(doc,start,&left_start_pos,version_num);
+    if (start_obj == NULL) {
+        return -3;          // out-of-range cursor
+    }
+
+    char * left = (char*)malloc(2);
+    left[0]='[';
+    left[1]='\0';
+    char * right = (char*)malloc(strlen(url)+1+2+1);
+    right[0] = ']';
+    right[1] = '(';
+    right[2] = '\0';
+    strcat(right,url);
+    strcat(right,")");
+
+
+    // if meet delete char, search to left
+    int end_result = chunk_insert(end_obj,left_end_pos,right,version_num,0);
+    free(right);
+    if(end_result){
+        return end_result; // error handle
+    }
+    // search to right
+    int start_result = chunk_insert(start_obj,left_start_pos,left,version_num,1);
+    free(left);
+    if (start_result){
+        return -6; // ojb_end memory done but start un done, should exit
+    }
+    
+    return start_result;
+    
+}
 
 // === Utilities ===
 void markdown_print(const document *doc, FILE *stream){

@@ -18,12 +18,27 @@ client:
 	./tsan_client $(PID) $(NAME)
 
 tests:
+	echo "Running tests..."
+	echo "markdown_base_test"
 	$(CC) $(CFLAGS) -fsanitize=address test/markdown_base_test.c $(DOCS) -o markdown_test
 	./markdown_test
+	echo "markdown_version_test"
+	$(CC) $(CFLAGS) -fsanitize=address test/markdown_version_test.c $(DOCS) -o markdown_version_test
+	./markdown_version_test
+
+	$(MAKE) bold_test
+
+	echo "cleaning up test files..."
+	rm -f markdown_test markdown_version_test
+
+bold_test:
+	$(CC) $(CFLAGS) -fsanitize=address test/markdown_bold_test.c $(DOCS) -o bold_test
+	./bold_test
+	rm -f bold_test
 
 stop:
 	@pkill -x server || echo "No server instances running."
 	@rm -f server.pid
 clean:
 	@pkill -x server || echo "No server instances running."
-	@rm -f *.o *.out server client server.pid FIFO/* markdown_test
+	@rm -f *.o *.out server client server.pid FIFO/* bold_test

@@ -9,6 +9,7 @@ u_int64_t doc_version;
 u_int64_t doc_length;
 
 int client_num=0;
+document * doc = NULL;
 
 
 void handle_client_sig(int sig, siginfo_t *info, void * context){
@@ -82,10 +83,11 @@ void * client_thread(void * arg){
             const char * role_write_message = "write\n";
             write(s2c,role_write_message,strlen(role_write_message)+1);
         }
+        
+
         //send doc length
         //send full document contents
         send_full_document();
-        while(1){
         //edit-command loop
         //interact with command 
 
@@ -94,11 +96,27 @@ void * client_thread(void * arg){
         // get timestamp
         // check delete error
         // run command
+        // send sync to all client in interval    
+        char buffer[MAX_COMMAND_LENGTH];
+        while (fgets(buffer, sizeof(buffer), stdin) != NULL) {
+        if (strcmp(buffer, "DOC?\n") == 0) {
+            markdown_print(doc,stdout)
+            
+        } else if (strcmp(buffer, "QUIT\n") == 0) {
+            if(client_num == 0 ){
+                *((int*)arg) = 1;
+                break;
+            }else{
+                printf("QUIT rejected, %d clients still connected.",client_num);
+            }
+            
+            
 
-
-        // send sync to all client in interval
-
+            
+        } else {
+            ;
         }
+    }
 
     }
 
@@ -147,8 +165,13 @@ int main(int argc, char *argv[]){
         return 1;
     }
 
+    doc = markdown_init();
+    int quit_flag = 0;
 
-    while(1){
+    pthread_t stdin_tid;
+    pthread_create(&stdin_tid, NULL, stdin_thread, &quit_flag);
+
+    while(!quit_flag){
         pid_t client_pid;
         ssize_t byte_num = read(pipe_handle2loop[0],&client_pid,sizeof(client_pid));
         if( byte_num == sizeof(client_pid)){
@@ -168,9 +191,35 @@ int main(int argc, char *argv[]){
 
 
 
-    
 
-
+    markdown_free(doc);
 
     return 0;
+}
+
+
+void *stdin_thread(void *arg) {
+    char buffer[MAX_COMMAND_LENGTH];
+
+    while (fgets(buffer, sizeof(buffer), stdin) != NULL) {
+        if (strcmp(buffer, "DOC?\n") == 0) {
+            markdown_print(doc,stdout)
+            
+        } else if (strcmp(buffer, "QUIT\n") == 0) {
+            if(client_num == 0 ){
+                *((int*)arg) = 1;
+                break;
+            }else{
+                printf("QUIT rejected, %d clients still connected.",client_num);
+            }
+            
+            
+
+            
+        } else {
+            ;
+        }
+    }
+
+    return NULL;
 }
