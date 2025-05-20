@@ -3,7 +3,7 @@ CC := gcc
 #CFLAGS := -Wall -Wextra
 CFLAGS := -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable
 NAME ?= daniel
-DOCS := source/document.c source/markdown.c libs/extension.h
+DOCS := source/markdown.c libs/extension.h
 
 all: server client
 
@@ -16,9 +16,7 @@ client:
 
 
 markdown.o:
-	$(CC) $(CFLAGS) -c source/document.c -o document.o
-	$(CC) $(CFLAGS) -c source/markdown.c -o markdown.o
-
+	$(CC) $(CFLAGS)  -c source/markdown.c -o markdown.o
 	
 
 tests:

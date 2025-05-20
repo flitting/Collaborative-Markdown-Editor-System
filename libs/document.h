@@ -58,25 +58,5 @@ typedef struct {
 
 // Functions from here onwards.
 
-chunk * chunk_init(const char * str,chunk* last_chunk, chunk* next_chunk);
-void chunk_free(chunk * obj);
-int chunk_split(chunk *original_obj, chunk *former_chunk, chunk *next_chunk);
-int chunk_split_at(chunk *original_obj, uint64_t pos, chunk *former_chunk, chunk *next_chunk);
-chunk *chunk_merge(chunk *start_chunk, chunk *end_chunk);
-
-chunk * find_pos_chunk(document* doc, size_t pos, size_t *left_pos_ptr, int version);
-size_t find_logical_index_map(chunk *ck, int version, size_t *map, size_t max_len);
-
-void find_insert_point(chunk *ck, size_t base_index, int direction, chunk **out_chunk, size_t *out_index,int version);
-void find_insert_point(chunk *ck, size_t base_index, int direction, chunk **out_chunk, size_t *out_index,int version);
-
-
-int chunk_insert(chunk* ck, size_t pos, char *content, int version,int direction);
-int chunk_change_char(chunk* ck, size_t pos, char ch, int version);
-int chunk_mark_delete(chunk* ck, size_t pos, size_t len, int version);
-
-void update_chunk_lengths(chunk* ck);
-
-char * document_serialize(document *doc);
 
 #endif
