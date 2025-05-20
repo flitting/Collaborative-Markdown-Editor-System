@@ -1,2 +1,2 @@
 //9017 extension
-# define COMP9017 1
+# define COMP9017 0

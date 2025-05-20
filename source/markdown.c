@@ -231,6 +231,7 @@ int markdown_ordered_list(document *doc, uint64_t version, size_t pos){
     int version_num = markdown_version_check(doc,version);
     if (version_num < 0) return -1;//wrong version
     //todo
+    return -4;
 }
 int markdown_unordered_list(document *doc, uint64_t version, size_t pos){
     int version_num = markdown_version_check(doc,version);

@@ -56,18 +56,9 @@ int main(int argc, char *argv[]){
         snprintf(c2s_path,space_need+1, "./FIFO/FIFO_C2S_%d",client_pid);
         snprintf(s2c_path,space_need+1, "./FIFO/FIFO_S2C_%d",client_pid);
         sleep(1);// wait untill the server start fifo;
-        int c2s = open(c2s_path, O_WRONLY);
-        if (c2s == -1){
-            perror("open c2s");
-            return 1;
-        }
-        int s2c = open(s2c_path, O_RDONLY);
-        if (s2c == -1){
-            perror("open s2c");
-            return 1;
-        }
-        FILE * s2c_fp = fopen(s2c_path,"r");
         FILE * c2s_fp = fopen(c2s_path,"w");
+        FILE * s2c_fp = fopen(s2c_path,"r");
+        
 
 
         free(c2s_path);
@@ -76,140 +67,189 @@ int main(int argc, char *argv[]){
         char * user_message = malloc(strlen(username) + 2); // +1 for '\n', +1 for '\0'
         if (user_message == NULL) {
             perror("malloc");
-            disconnect(c2s,s2c,c2s_fp,s2c_fp,0);
+            disconnect(c2s_fp,s2c_fp,0);
             return 1;
         }
         sprintf(user_message, "%s\n", username);
-        if(write(c2s,user_message,strlen(user_message)+1)==-1){
+        if(fputs(user_message, c2s_fp)==-1){
             perror("write username null");
             free(user_message);
-            disconnect(c2s,s2c,c2s_fp,s2c_fp,0);
+            disconnect(c2s_fp,s2c_fp,0);
             return 1;
         }
+        fflush(c2s_fp);
         free(user_message);
-        char * role_message = read_full_message(s2c);
-        if (!role_message) {
-            perror("null role_message");
-            disconnect(c2s,s2c,c2s_fp,s2c_fp,0);
+        char role_message[MAX_COMMAND_LENGTH];
+        if (fgets(role_message, sizeof(role_message), s2c_fp) == NULL) {
+            perror("fgets failed or connection closed");
+            disconnect(c2s_fp, s2c_fp, 0);
             return 1;
         }
-        int role;
-        if (strcmp(role_message,"write")==0){
-            role = 2;
-            free(role_message);
-        }else if (strcmp(role_message,"read")==0){
-            role = 1;
-            free(role_message);
+        //int role;
+        if (strcmp(role_message,"write\n")==0){
+            ;
+        //    role = 2;
+        }else if (strcmp(role_message,"read\n")==0){
+
+            ;
+        //    role = 1;
         }else{
-            printf("%s",role_message);
-            free(role_message);
-            disconnect(c2s,s2c,c2s_fp,s2c_fp,0);
+            printf("Current Role: %s\n",role_message);
+            disconnect(c2s_fp,s2c_fp,0);
             return 0;
         }
+        printf("Current Role: %s\n",role_message);
 
         // receive docuement from server
         char * cmd_buffer = (char*)malloc(MAX_COMMAND_LENGTH);
-        fgets(cmd_buffer,MAX_COMMAND_LENGTH,s2c);
+        fgets(cmd_buffer,MAX_COMMAND_LENGTH,s2c_fp);
         char * endptr;
-        size_t version = strtoul(cmd_buffer,endptr,10);
-        fgets(cmd_buffer,MAX_COMMAND_LENGTH,s2c);
-        size_t doc_length =  strtoul(cmd_buffer,endptr,10);
-        char * doc_content_buffer = (char *)malloc(doc_length);
-        read(s2c,doc_content_buffer,doc_length);
+        size_t version = strtoul(cmd_buffer,&endptr,10);
+        fgets(cmd_buffer,MAX_COMMAND_LENGTH,s2c_fp);
+        size_t doc_length =  strtoul(cmd_buffer,&endptr,10);
+        char * doc_content_buffer = (char *)malloc(doc_length+1);
+        fread(doc_content_buffer, 1, doc_length, s2c_fp);
+        doc_content_buffer[doc_length] = '\0'; 
         doc = markdown_init();
+        if(strcmp(doc_content_buffer,"")!=0 && strcmp(doc_content_buffer,"\n")!=0 ){
         int result = markdown_insert(doc,0,0,doc_content_buffer);
-        free(doc_content_buffer);
-        if(result < 0){
-            perror("error insert document");
-            disconnect(c2s,s2c,c2s_fp,s2c_fp,0);
-            return -1;
+            if(result < 0){
+                printf("error insert document:\n%s",doc_content_buffer);
+                free(doc_content_buffer);
+                disconnect(c2s_fp,s2c_fp,0);
+                return -1;
+            }
         }
+        free(doc_content_buffer);
         doc->version = version-1;
         markdown_increment_version(doc);
         Commandlogs * logs_start = NULL;
         Commandlogs * curr_log = NULL;
 
-        fd_set readfds;
-        int maxfd = (s2c > STDIN_FILENO ? s2c : STDIN_FILENO) + 1;
+
 
         while (1) {
-            FD_ZERO(&readfds);
-            FD_SET(STDIN_FILENO, &readfds); //  user
-            FD_SET(s2c, &readfds);          // server
+            fd_set rfds;
+            FD_ZERO(&rfds);
+            FD_SET(STDIN_FILENO, &rfds);
+            FD_SET(fileno(s2c_fp), &rfds);
+            int maxfd = (STDIN_FILENO > fileno(s2c_fp) ? STDIN_FILENO : fileno(s2c_fp)) + 1;
 
-            int activity = select(maxfd, &readfds, NULL, NULL, NULL);
-            if (activity < 0) {
-                perror("select error");
+            struct timeval tv = { .tv_sec = 0, .tv_usec = 500000 };
+
+            int ready = select(maxfd, &rfds, NULL, NULL, &tv);
+            if (ready == -1) {
+                perror("select");
                 break;
             }
 
-            // user
-            if (FD_ISSET(STDIN_FILENO, &readfds)) {
-                char buffer[MAX_COMMAND_LENGTH];
-                if (fgets(buffer, MAX_COMMAND_LENGTH, stdin) == NULL) {
-                    printf("Error reading input\n");
-                    continue;
-                }
-                if(strcmp(buffer,"DOC?\n")==0){
-                    markdown_print(doc,stdout);
-                }else if(strcmp(buffer,"LOG?\n")==0){
-                    size_t log_size;
-                    char * log_content = dump_commandlogs(logs_start,&log_size);
-                    printf("%s\n",log_content);
-                    free(log_content);
-                }else if(strcmp(buffer,"DISCONNECT\n")==0){
-                    fputs(buffer,c2s_fp);
-                    break;
-                }else{
-                    fputs(buffer,c2s_fp);
-                }
 
+            // Handle user input
+            if (FD_ISSET(STDIN_FILENO, &rfds)) {
+                if (fgets(cmd_buffer, MAX_COMMAND_LENGTH, stdin) != NULL) {
+
+                    if(strcmp(cmd_buffer,"DOC?\n")==0){
+                        markdown_print(doc,stdout);
+                    }else if(strcmp(cmd_buffer,"LOG?\n")==0){
+                        size_t log_size;
+                        char * log_content = dump_commandlogs(logs_start,&log_size);
+                        if(log_content == NULL) printf("\n");
+                        else printf("%s\n",log_content);
+                        free(log_content);
+                    }else if(strcmp(cmd_buffer,"DISCONNECT\n")==0){
+                        fputs(cmd_buffer,c2s_fp);
+                        fflush(c2s_fp);
+                        break; 
+                    }else if(strcmp(cmd_buffer,"PERM?\n")==0){
+                        fputs(cmd_buffer,c2s_fp);
+                        fflush(c2s_fp);
+                        if (fgets(cmd_buffer, MAX_COMMAND_LENGTH, s2c_fp) != NULL){
+                            printf("%s",cmd_buffer);
+                        }else{
+                            printf("Server disconnected.\n");
+                            break;
+                        }
+                    }else{
+                        fputs(cmd_buffer,c2s_fp);
+                        fflush(c2s_fp);
+                    }
+                }else {
+                    // Server closed connection or error
+                    printf("Server disconnected.\n");
+                    break;
+                }
             }
 
-            // server update
-            if (FD_ISSET(s2c, &readfds)) {
-                char update_buf[MAX_COMMAND_LENGTH];
-                if (fgets(update_buf, MAX_COMMAND_LENGTH, s2c_fp) == NULL) {
-                    printf("Disconnected by server\n");
+            // Handle server messages
+            if (FD_ISSET(fileno(s2c_fp), &rfds)) {
+                if (fgets(cmd_buffer, MAX_COMMAND_LENGTH, s2c_fp) != NULL) {
+                    if (strncmp(cmd_buffer, "VERSION", 7) == 0) {
+                        uint64_t input_version;
+                        sscanf(cmd_buffer, "VERSION %lu\n", &input_version);
+
+                        Commandlogs * tag_log = (Commandlogs*)malloc(sizeof(Commandlogs));
+                        tag_log->cmd=NULL;
+                        tag_log->response = NULL;
+                        tag_log->next = NULL;
+                        tag_log->version = input_version;  // Add this line
+                        tag_log->client_id = 0;  
+
+                        if (logs_start == NULL) {
+                            logs_start = tag_log;
+                            curr_log = tag_log;
+                        } else {
+                            curr_log->next = tag_log;
+                            curr_log = tag_log;
+                        }
+
+
+                        while (fgets(cmd_buffer, MAX_COMMAND_LENGTH, s2c_fp) != NULL) {
+                            if(strcmp(cmd_buffer, "END\n") == 0) {
+                                markdown_increment_version(doc);
+                                break;
+                            }
+
+                            Commandlogs *log = (Commandlogs *)malloc(sizeof(Commandlogs));
+                            pid_t cmd_pid;
+                            char *cmd_name_buffer = (char*)malloc(MAX_COMMAND_LENGTH);
+                            char *result_buffer = (char*)malloc(30);
+                            int is_success = 0;
+
+                            read_buffer_cmd(cmd_buffer, &cmd_pid, cmd_name_buffer, result_buffer, &is_success);
+                            if (is_success == -1) {
+                                printf("Invalid response\n");
+                                break;
+                            }
+
+                            log->client_id = cmd_pid;
+                            log->cmd = cmd_name_buffer;
+                            log->response = result_buffer;
+                            log->version = input_version;
+                            log->next = NULL;
+
+                            if (logs_start == NULL) {
+                                logs_start = log;
+                                curr_log = log;
+                            } else {
+                                curr_log->next = log;
+                                curr_log = log;
+                            }
+                            int result = update_by_logs(doc, curr_log);
+                            if (result != 0) break;
+                        }
+                    } else {
+                        // Optional: handle unexpected lines from server
+                        printf("Unknown server message: %s\n", cmd_buffer);
+                    }
+                } else {
+                    // Server closed connection or error
+                    printf("Server disconnected.\n");
                     break;
                 }
-                uint64_t input_version = version;
-                // read version info
-                if(strncmp(update_buf,"VERSION",7)){
-                    sscanf(update_buf,"VERSION %ld\n",&input_version);
-                    while(fgets(update_buf, MAX_COMMAND_LENGTH, s2c_fp) == NULL){
-                        if(strcmp(update_buf,"END\n")==0) break;
-                        Commandlogs * log = (Commandlogs *)malloc(sizeof(Commandlogs));
-                        pid_t cmd_pid;
-                        char * cmd_name_buffer = (char*)malloc(10);
-                        char * result_buffer = (char*)malloc(30);
-                        read_buffer_cmd(update_buf,&cmd_pid,cmd_name_buffer,result_buffer);//
-                        log->client_id = cmd_pid;
-                        log->cmd = cmd_name_buffer;
-                        log->response = result_buffer;
-                        log->version = input_version;
-                        if(logs_start == NULL){
-                            logs_start = log;
-                            curr_log = log;
-                        }else{
-                            curr_log->next = log;
-                            curr_log = log;
-                        }
-                        int result = update_by_logs(doc,curr_log);
-                        if(result != 0) break;
-
-
-
-
-
-                    }
-
-                }
-                
             }
         }
         free_logs(logs_start);
-        disconnect(c2s,s2c,c2s_fp,s2c_fp,1);
+        disconnect(c2s_fp,s2c_fp,1);
     }else if (sig == -1) {
         perror("sigtimedwait timeout or error");
         return 1;
@@ -224,17 +264,16 @@ int main(int argc, char *argv[]){
 }
 
 
-void disconnect(int c2s,int s2c, FILE* c2s_fp, FILE * s2c_fp,int is_server_ready){
+void disconnect(FILE* c2s_fp, FILE * s2c_fp,int is_server_ready){
     if(is_server_ready){
         fputs("DISCONNECT\n",c2s_fp);
     }
-    close(s2c);
-    close(c2s);
     fclose(c2s_fp);
     fclose(s2c_fp);
+    sleep(1);
 
 }
-void read_buffer_cmd(char * buffer, pid_t *pid, char *cmd, char *response) {
+void read_buffer_cmd(char * buffer, pid_t *pid, char *cmd, char *response,int * is_success) {
     if (strncmp(buffer, "EDIT ", 5) != 0) {
         fprintf(stderr, "Invalid command format.\n");
         return;
@@ -258,15 +297,15 @@ void read_buffer_cmd(char * buffer, pid_t *pid, char *cmd, char *response) {
     char *reject_pos = strstr(p, " Reject");
 
     char *response_pos = NULL;
-    int is_success = 0;
 
     if (success_pos && (!reject_pos || success_pos < reject_pos)) {
         response_pos = success_pos;
-        is_success = 1;
+        *is_success = 1;
     } else if (reject_pos) {
         response_pos = reject_pos;
-        is_success = 0;
+        *is_success = 0;
     } else {
+        *is_success = -1;
         fprintf(stderr, "Invalid command: missing SUCCESS or Reject.\n");
         return;
     }
@@ -285,7 +324,10 @@ int update_by_logs(document *doc,Commandlogs *logs){
     while(log!=NULL){
         char* buffer = log->cmd;
         char *res = log->response;
-        if(strcmp(res,"SUCCESS")!=0) continue;
+        if(strcmp(res,"SUCCESS\n")!=0){
+            log = log->next;
+            continue;
+        }
         uint64_t version = log->version;
 
         int pos, level, pos_start, pos_end, no_char,result;
@@ -401,15 +443,12 @@ int update_by_logs(document *doc,Commandlogs *logs){
             }
 
         }
-        free(link);
-        free(content);
         if(result != 0){
-            // error command exec;
-            return -1;
+            break;
         }
 
 
-
+        log = log->next;
     }
     return 0;
 }

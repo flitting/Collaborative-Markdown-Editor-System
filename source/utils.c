@@ -58,8 +58,6 @@ int search_roles(char * client_name){
     return -1 meaining error
     
     */
-    //debug
-    printf("\n%s\n",client_name);
     char * role_path = "./roles.txt";
     FILE * file = fopen(role_path,"r");
     if (file == NULL){
@@ -72,7 +70,7 @@ int search_roles(char * client_name){
 
     int find_flag = 0;
     while(fgets(buffer,sizeof(buffer),file)){
-        buffer[strcspn(buffer, "\n")] = 0;
+        buffer[strcspn(buffer, "\n")] = '\0';
         if(sscanf(buffer,"%s %s",username_buffer,permission_buffer) == 2){
             if (strcmp(client_name,username_buffer)== 0){
                 if (strcmp(permission_buffer,"write")==0){
@@ -95,83 +93,71 @@ int search_roles(char * client_name){
 
 
 char *dump_commandlogs(Commandlogs *head, size_t *total_size) {
-    if(head==NULL){
-        *total_size = 0;
-        char *dump = (char *)malloc(1);
-        dump[0] = '\0';
-        return dump;
-    }
-    Commandlogs *curr = head;
-    uint64_t current_version = (uint64_t)-1;
+    if (!head) return NULL;
+
     size_t buffer_capacity = 4096;
     size_t offset = 0;
-
     char *dump = malloc(buffer_capacity);
     if (!dump) return NULL;
 
+    Commandlogs *curr = head;
+
     while (curr) {
-        if (curr->version != current_version) {
-            if (current_version != (uint64_t)-1) {
-                // Add END line
-                const char *end_line = "END\n";
-                size_t len = strlen(end_line);
-                if (offset + len >= buffer_capacity) {
-                    buffer_capacity *= 2;
-                    dump = realloc(dump, buffer_capacity);
-                }
-                memcpy(dump + offset, end_line, len);
-                offset += len;
-            }
-
-            // Add VERSION line
-            char version_line[64];
-            int written = snprintf(version_line, sizeof(version_line), "VERSION %lu\n", curr->version);
-            if (offset + written >= buffer_capacity) {
-                buffer_capacity *= 2;
-                dump = realloc(dump, buffer_capacity);
-            }
-            memcpy(dump + offset, version_line, written);
-            offset += written;
-
-            current_version = curr->version;
+        // start with tag_log
+        if (!(curr->cmd == NULL && curr->response == NULL)) {
+            fprintf(stderr, "Error: Commandlogs sequence must start with tag_log.\n");
+            free(dump);
+            return NULL;
         }
 
-        // Add command log line
-        char command_line[1024];
-        snprintf(command_line, sizeof(command_line),
-                 "EDIT %d %s%s", curr->client_id, curr->cmd, curr->response);
-        size_t len = strlen(command_line);
-        if (offset + len >= buffer_capacity) {
-            buffer_capacity = buffer_capacity * 2 + len;
+        // write VERSION <version>\n
+        char version_line[64];
+        int written = snprintf(version_line, sizeof(version_line), "VERSION %lu\n", curr->version);
+        if (offset + written >= buffer_capacity) {
+            buffer_capacity = buffer_capacity * 2 + written;
             dump = realloc(dump, buffer_capacity);
         }
-        memcpy(dump + offset, command_line, len);
-        offset += len;
+        memcpy(dump + offset, version_line, written);
+        offset += written;
 
         curr = curr->next;
-    }
 
-    // Add final END line if needed
-    if (current_version != (uint64_t)-1) {
+        // add line untill next tag_log
+        while (curr && !(curr->cmd == NULL && curr->response == NULL)) {
+            char line[1024];
+            snprintf(line, sizeof(line), "EDIT %d %s %s", curr->client_id, curr->cmd, curr->response);
+            size_t len = strlen(line);
+            if (offset + len >= buffer_capacity) {
+                buffer_capacity = buffer_capacity * 2 + len;
+                dump = realloc(dump, buffer_capacity);
+            }
+            memcpy(dump + offset, line, len);
+            offset += len;
+
+            curr = curr->next;
+        }
+
+
+        // add END\n
         const char *end_line = "END\n";
-        size_t len = strlen(end_line);
-        if (offset + len >= buffer_capacity) {
-            buffer_capacity += len;
+        size_t end_len = strlen(end_line);
+        if (offset + end_len >= buffer_capacity) {
+            buffer_capacity += end_len;
             dump = realloc(dump, buffer_capacity);
         }
-        memcpy(dump + offset, end_line, len);
-        offset += len;
+        memcpy(dump + offset, end_line, end_len);
+        offset += end_len;
     }
 
-    // Null-terminate the result
+    // Null terminate
     if (offset + 1 >= buffer_capacity) {
         dump = realloc(dump, buffer_capacity + 1);
     }
     dump[offset] = '\0';
     *total_size = offset;
+
     return dump;
 }
-
 
 
 
@@ -183,7 +169,8 @@ void free_logs(Commandlogs *logs) {
 
     while (current != NULL) {
         next = current->next; 
-        free(current->cmd);    
+        free(current->cmd);
+        free(current->response);   
         free(current);        
         current = next;        // Move to the next node
     }
