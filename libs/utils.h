@@ -6,6 +6,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <time.h>
+#include <stdint.h>
 
 #define BUFFER_SIZE_UNIT 64 
 #define MAX_LINE_LENGTH 1000
@@ -14,8 +16,20 @@
 char *read_full_message(int fd);
 int search_roles(char * client_name);
 
-int send_full_document();//todo
+
+typedef struct commandlogs{
+    uint64_t version;
+    char * cmd;
+    char * response;
+    pid_t client_id;
+    struct commandlogs * next;
+}Commandlogs;
+
+char* dump_commandlogs(Commandlogs *head, size_t *out_size);
 
 
-int receive_full_document();
+void free_logs(Commandlogs* logs);
+
+
+
 #endif // UTILS_H

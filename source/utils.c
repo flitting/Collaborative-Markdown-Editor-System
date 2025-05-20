@@ -94,13 +94,97 @@ int search_roles(char * client_name){
 }
 
 
-int send_full_document(){
-    // todo send document;
-    return 0;
+char *dump_commandlogs(Commandlogs *head, size_t *total_size) {
+    if(head==NULL){
+        *total_size = 0;
+        char *dump = (char *)malloc(1);
+        dump[0] = '\0';
+        return dump;
+    }
+    Commandlogs *curr = head;
+    uint64_t current_version = (uint64_t)-1;
+    size_t buffer_capacity = 4096;
+    size_t offset = 0;
+
+    char *dump = malloc(buffer_capacity);
+    if (!dump) return NULL;
+
+    while (curr) {
+        if (curr->version != current_version) {
+            if (current_version != (uint64_t)-1) {
+                // Add END line
+                const char *end_line = "END\n";
+                size_t len = strlen(end_line);
+                if (offset + len >= buffer_capacity) {
+                    buffer_capacity *= 2;
+                    dump = realloc(dump, buffer_capacity);
+                }
+                memcpy(dump + offset, end_line, len);
+                offset += len;
+            }
+
+            // Add VERSION line
+            char version_line[64];
+            int written = snprintf(version_line, sizeof(version_line), "VERSION %lu\n", curr->version);
+            if (offset + written >= buffer_capacity) {
+                buffer_capacity *= 2;
+                dump = realloc(dump, buffer_capacity);
+            }
+            memcpy(dump + offset, version_line, written);
+            offset += written;
+
+            current_version = curr->version;
+        }
+
+        // Add command log line
+        char command_line[1024];
+        snprintf(command_line, sizeof(command_line),
+                 "EDIT %d %s%s", curr->client_id, curr->cmd, curr->response);
+        size_t len = strlen(command_line);
+        if (offset + len >= buffer_capacity) {
+            buffer_capacity = buffer_capacity * 2 + len;
+            dump = realloc(dump, buffer_capacity);
+        }
+        memcpy(dump + offset, command_line, len);
+        offset += len;
+
+        curr = curr->next;
+    }
+
+    // Add final END line if needed
+    if (current_version != (uint64_t)-1) {
+        const char *end_line = "END\n";
+        size_t len = strlen(end_line);
+        if (offset + len >= buffer_capacity) {
+            buffer_capacity += len;
+            dump = realloc(dump, buffer_capacity);
+        }
+        memcpy(dump + offset, end_line, len);
+        offset += len;
+    }
+
+    // Null-terminate the result
+    if (offset + 1 >= buffer_capacity) {
+        dump = realloc(dump, buffer_capacity + 1);
+    }
+    dump[offset] = '\0';
+    *total_size = offset;
+    return dump;
 }
 
 
-int receive_full_document(){
-    return 0;
-}
 
+
+
+
+void free_logs(Commandlogs *logs) {
+    Commandlogs *current = logs;
+    Commandlogs *next;
+
+    while (current != NULL) {
+        next = current->next; 
+        free(current->cmd);    
+        free(current);        
+        current = next;        // Move to the next node
+    }
+}

@@ -227,7 +227,11 @@ int markdown_blockquote(document *doc, uint64_t version, size_t pos){
 
     return result_num;
 }
-int markdown_ordered_list(document *doc, uint64_t version, size_t pos);
+int markdown_ordered_list(document *doc, uint64_t version, size_t pos){
+    int version_num = markdown_version_check(doc,version);
+    if (version_num < 0) return -1;//wrong version
+    //todo
+}
 int markdown_unordered_list(document *doc, uint64_t version, size_t pos){
     int version_num = markdown_version_check(doc,version);
     if (version_num < 0) return -1;//wrong version
@@ -352,6 +356,7 @@ int markdown_link(document *doc, uint64_t version, size_t start, size_t end, con
 void markdown_print(const document *doc, FILE *stream){
     const char * result = markdown_flatten(doc);
     fputs(result,stream);
+    fputs("\n",stream);
     
 }
 char *markdown_flatten(const document *doc){
