@@ -16,7 +16,7 @@ client:
 
 
 markdown.o:
-	$(CC) $(CFLAGS) -c source/markdown.c -o markdown.o
+	$(CC) $(CFLAGS) $(DOCS) -o markdown.o
 
 tests:
 	echo "Running tests..."
