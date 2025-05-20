@@ -9,12 +9,14 @@ all: server client
 
 server: 
 	$(CC) $(CFLAGS) source/server.c ./source/utils.c $(DOCS)  -o server
-	./server 1000
 #./server 1000 & echo $$! > server.pid
 client:
 	$(CC) $(CFLAGS) source/client.c ./source/utils.c $(DOCS)  -o client
 	$(eval PID := $(shell cat server.pid))
-	./client $(PID) $(NAME)
+
+
+markdown.o:
+	$(CC) $(CFLAGS) -c $(DOCS) -o markdown.o
 
 tests:
 	echo "Running tests..."
