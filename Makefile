@@ -12,7 +12,6 @@ server:
 #./server 1000 & echo $$! > server.pid
 client:
 	$(CC) $(CFLAGS) source/client.c ./source/utils.c $(DOCS)  -o client
-	$(eval PID := $(shell cat server.pid))
 
 
 markdown.o:

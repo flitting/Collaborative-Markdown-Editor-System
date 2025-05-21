@@ -9,3 +9,4 @@ dodgy_staff_server
 FIFO_C2S_*
 FIFO_S2C_*
 doc.md
+server.pid

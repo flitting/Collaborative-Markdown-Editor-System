@@ -90,12 +90,12 @@ void * client_thread(void * arg){
     char username_message[MAX_COMMAND_LENGTH];
     fgets(username_message, sizeof(username_message), c2s_fp);
     username_message[strcspn(username_message, "\n")] = '\0';
-    printf("Client %s registered\n",username_message);
+    
     int role = search_roles(username_message);
     if(role==-1){
         //disconnect
         // delete files
-        
+        printf("search error\n");
         client_disconnect(new_client);
         return NULL;
     }else if (role == 0){
@@ -105,12 +105,12 @@ void * client_thread(void * arg){
         fputs(reject_role_message,s2c_fp);
         fflush(new_client->s2c_fp);
         pthread_mutex_unlock(&new_client->s2c_mutex);
-        sleep(1);
-
         //disconnect
+        printf("Client %s not registered\n",username_message);
         client_disconnect(new_client);
         return NULL;   
     }else{
+        printf("Client %s registered\n",username_message);
         if (role==1){
             const char * role_read_message = "read\n";
             pthread_mutex_lock(&new_client->s2c_mutex);
@@ -489,7 +489,7 @@ void *stdin_thread(void *arg) {
                 *((int*)arg) = 1;
                 break;
             }else{
-                printf("QUIT rejected, %d clients still connected.",client_num);
+                printf("QUIT rejected, %d clients still connected.\n",client_num);
             }
         } else if (strcmp(buffer, "LOG?\n") == 0){
             size_t log_size;
@@ -529,6 +529,7 @@ void *broadcast_thread(void *arg) {
         version_tag_log->version = doc->version;
         version_tag_log->response = NULL;
         version_tag_log->cmd = NULL;
+
         version_tag_log->next = buffer_log_start->next;
         buffer_log_start->next = NULL;
 
@@ -553,8 +554,16 @@ void *broadcast_thread(void *arg) {
         //update logs
         
         histroy_curr->next = version_tag_log;
-        histroy_curr = buffer_curr;
+
+        // find the tail
+        Commandlogs *tmp = version_tag_log;
+        while (tmp->next != NULL) {
+            tmp = tmp->next;
+        }
+        histroy_curr = tmp;
+
         buffer_curr = buffer_log_start;
+
         pthread_mutex_unlock(&log_mutex);
         free(dump_buffer);
     }
@@ -564,27 +573,25 @@ void *broadcast_thread(void *arg) {
 
 
 void client_disconnect(client_info * client){
-
-    if(client->last == NULL || client->next == NULL){
-        // last client
-        client_list = NULL;    
-    }else{
-        if(client->last!=NULL){
-            client->last->next = client->next;
-        }
-        if(client->next!=NULL){
-            client->next->last = client->last;
-        }
+    pthread_mutex_lock(&client_list_mutex);
+    if (client->last != NULL) {
+        client->last->next = client->next;
+    } else { // client is at the head
+        client_list = client->next;
     }
+    if (client->next != NULL) {
+        client->next->last = client->last;
+    }
+    pthread_mutex_unlock(&client_list_mutex);
     printf("Client %d disconnect\n",client->client_id);
     pthread_mutex_destroy(&client->s2c_mutex);
-        remove(client->c2s_path);
-        remove(client->s2c_path);
-        free(client->c2s_path);
-        free(client->s2c_path);
+    remove(client->c2s_path);
+    remove(client->s2c_path);
+    free(client->c2s_path);
+    free(client->s2c_path);
 
-        fclose(client->c2s_fp);
-        fclose(client->s2c_fp);
-        free(client);
-        client_num--;
+    fclose(client->c2s_fp);
+    fclose(client->s2c_fp);
+    free(client);
+    client_num--;
 }

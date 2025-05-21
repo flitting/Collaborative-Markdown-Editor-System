@@ -103,13 +103,16 @@ int main(int argc, char *argv[]){
         // receive docuement from server
         char * cmd_buffer = (char*)malloc(MAX_COMMAND_LENGTH);
         fgets(cmd_buffer,MAX_COMMAND_LENGTH,s2c_fp);
+        printf("%s",cmd_buffer);//debug
         char * endptr;
         size_t version = strtoul(cmd_buffer,&endptr,10);
         fgets(cmd_buffer,MAX_COMMAND_LENGTH,s2c_fp);
+        printf("%s",cmd_buffer);//debug
         size_t doc_length =  strtoul(cmd_buffer,&endptr,10);
         char * doc_content_buffer = (char *)malloc(doc_length+1);
-        fread(doc_content_buffer, 1, doc_length, s2c_fp);
-        doc_content_buffer[doc_length] = '\0'; 
+        size_t bytes = fread(doc_content_buffer, 1, doc_length, s2c_fp);
+        doc_content_buffer[doc_length] = '\0';
+        printf("%ld,%s",bytes,doc_content_buffer);//debug
         doc = markdown_init();
         if(strcmp(doc_content_buffer,"")!=0 && strcmp(doc_content_buffer,"\n")!=0 ){
         int result = markdown_insert(doc,0,0,doc_content_buffer);
@@ -125,6 +128,7 @@ int main(int argc, char *argv[]){
         markdown_increment_version(doc);
         Commandlogs * logs_start = NULL;
         Commandlogs * curr_log = NULL;
+        uint64_t last_version=0;
 
 
 
@@ -142,7 +146,7 @@ int main(int argc, char *argv[]){
                 perror("select");
                 break;
             }
-            uint64_t last_version=0;
+            
 
 
             // Handle user input
@@ -206,6 +210,8 @@ int main(int argc, char *argv[]){
 
                         while (fgets(cmd_buffer, MAX_COMMAND_LENGTH, s2c_fp) != NULL) {
                             if(strcmp(cmd_buffer, "END\n") == 0) {
+                                //debug
+                                //printf("input_version %ld,last_version %ld\n",input_version,last_version);
                                 if(input_version == last_version+1){
                                     markdown_increment_version(doc);
                                 }
@@ -238,9 +244,10 @@ int main(int argc, char *argv[]){
                                 curr_log->next = log;
                                 curr_log = log;
                             }
-                            int result = update_by_logs(doc, curr_log);
-                            if (result != 0) break;
+                            
                         }
+                        int result = update_by_logs(doc, tag_log->next);
+
                     } else {
                         // Optional: handle unexpected lines from server
                         printf("Unknown server message: %s\n", cmd_buffer);

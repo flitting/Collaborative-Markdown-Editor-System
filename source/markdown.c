@@ -5,7 +5,7 @@
 // create a empty document
 document * markdown_init(void){
     document * doc = (document*)malloc(sizeof(document));
-    doc->version = 1;
+    doc->version = 0;
     doc->start_empty_chunk = chunk_init("",NULL,NULL);
     // Create an editable initial chunk with empty content.
     chunk * initial_chunk = chunk_init("", doc->start_empty_chunk, NULL);
@@ -138,7 +138,8 @@ int markdown_bold(document *doc, uint64_t version, size_t start, size_t end){
     if (start_obj == NULL) {
         return -3;          // out-of-range cursor
     }
-
+    // I need to consider the delete error for ranges
+    // if statuses between poses are deleted,just send wrong.
     char * two_stars = (char*)malloc(3);
     two_stars[0]='*';
     two_stars[1]='*';
