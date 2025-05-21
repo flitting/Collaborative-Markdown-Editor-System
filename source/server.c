@@ -41,11 +41,11 @@ void * client_thread(void * arg){
     
 
 
-    int space_need = snprintf(NULL,0,"./FIFO/FIFO_C2S_%d",client_pid);
+    int space_need = snprintf(NULL,0,"./FIFO_C2S_%d",client_pid);
     char * c2s_path = (char *)malloc(space_need+1);
     char * s2c_path = (char *)malloc(space_need+1);
-    snprintf(c2s_path,space_need+1, "./FIFO/FIFO_C2S_%d",client_pid);
-    snprintf(s2c_path,space_need+1, "./FIFO/FIFO_S2C_%d",client_pid);
+    snprintf(c2s_path,space_need+1, "./FIFO_C2S_%d",client_pid);
+    snprintf(s2c_path,space_need+1, "./FIFO_S2C_%d",client_pid);
 
     remove(c2s_path);
     remove(s2c_path);
@@ -69,6 +69,7 @@ void * client_thread(void * arg){
 
     // init client_info
     client_info *new_client = (client_info *)malloc(sizeof(client_info));
+    new_client->client_id = client_pid;
     new_client->c2s_fp = c2s_fp;
     new_client->s2c_fp = s2c_fp;
     new_client->s2c_path = s2c_path;
@@ -89,7 +90,7 @@ void * client_thread(void * arg){
     char username_message[MAX_COMMAND_LENGTH];
     fgets(username_message, sizeof(username_message), c2s_fp);
     username_message[strcspn(username_message, "\n")] = '\0';
-
+    printf("Client %s registered\n",username_message);
     int role = search_roles(username_message);
     if(role==-1){
         //disconnect
@@ -160,7 +161,8 @@ void * client_thread(void * arg){
         const char * invalid_position = "Reject INVALID_POSITION\n";
         const char * deleted_position = "Reject DELETED_POSITION\n";
         const char * outdated_version = "Reject OUTDATED_VERSION\n";
-        const char * write_pms = " Reject UNAUTHORISED %s write read\n";
+        const char * write_pms = "Reject UNAUTHORISED %s write read\n";
+        const char * other_error = "INTERNAL_ERR\n";
 
         
         while (fgets(cmd_buffer, sizeof(cmd_buffer), c2s_fp) != NULL) {
@@ -187,8 +189,6 @@ void * client_thread(void * arg){
                 Commandlogs * log = (Commandlogs *)malloc(sizeof(Commandlogs));
                 if(log == NULL){
 
-                    //disconnect
-                    printf("%s leaved\n",username_message);
                     client_disconnect(new_client);
                     return NULL;
                 }
@@ -275,8 +275,7 @@ void * client_thread(void * arg){
                     }  else {
                         // unknown command
 
-                        free(cmd);
-                        free(log);
+                        result = -5;
                         continue;
 
                     }
@@ -323,7 +322,6 @@ void * client_thread(void * arg){
                         result = markdown_link(doc,version,pos_start,pos_end,link);
                         // handle LINK from pos_start to pos_end with link and version
                     } else if (strncmp(cmd_buffer, "INSERT", 6) == 0) {
-                        printf("inserting\n");
                         sscanf(cmd_buffer + 7, "%lu %d %[^\n]", &version, &pos, content);
                         result = markdown_insert(doc,version,pos,content);
 
@@ -334,8 +332,7 @@ void * client_thread(void * arg){
                         // handle DEL from pos deleting no_char characters with version
                     }else{
                         // unknown command
-                        free(cmd);
-                        free(log);
+                        result = -5;
                         continue;
                     }
                     log->version = version;
@@ -351,7 +348,7 @@ void * client_thread(void * arg){
                 else if(result == -2) strcpy(response,deleted_position);
                 else if(result == -3) strcpy(response,invalid_position);
                 else if(result == 0) strcpy(response,"SUCCESS\n");
-                else strcpy(response," SOMETHING WENT WRONG\n"); // should be fixed.
+                else strcpy(response,other_error); // should be fixed.
                 log->response = response;
                 pthread_mutex_lock(&log_mutex);
                 log->next = NULL;
@@ -359,7 +356,9 @@ void * client_thread(void * arg){
                 buffer_curr = log;
                 pthread_mutex_unlock(&log_mutex);
                 // send response in broadcasting
-                is_doc_changed = 1;
+                if(result!= -5||result != -6){
+                    is_doc_changed = 1;
+                }
                 
                 
 
@@ -367,8 +366,7 @@ void * client_thread(void * arg){
         }
 
     }
-    printf("%s disconnect\n",username_message);
-    //disconnect
+
     client_disconnect(new_client);
     return NULL;
 }
@@ -467,7 +465,7 @@ int main(int argc, char *argv[]){
 
 
 
-
+    printf("Shutting down server\n");
     markdown_free(doc);
     pthread_mutex_destroy(&doc_mutex);
     free_logs(history_log_start);
@@ -496,7 +494,7 @@ void *stdin_thread(void *arg) {
         } else if (strcmp(buffer, "LOG?\n") == 0){
             size_t log_size;
             char * log_content = dump_commandlogs(history_log_start->next,&log_size);
-            printf("%s\n",log_content);
+            if(log_content!=NULL)printf("%s",log_content);
             free(log_content);
         } else {
             ;
@@ -518,15 +516,14 @@ void *broadcast_thread(void *arg) {
 
     while (1) {
         sleep_ms(interval);
-        
-        if(is_doc_changed){
         // freeze the logs for the whole code.
-        printf("broadcasting start\n");
         pthread_mutex_lock(&log_mutex);
 
         //increment
-        markdown_increment_version(doc);
-        is_doc_changed = 0;
+        if(is_doc_changed){
+            markdown_increment_version(doc);
+            is_doc_changed = 0;
+        }
 
         Commandlogs * version_tag_log = (Commandlogs*) malloc(sizeof(Commandlogs));
         version_tag_log->version = doc->version;
@@ -543,8 +540,10 @@ void *broadcast_thread(void *arg) {
         client_info * curr_client = client_list;
         while(curr_client!=NULL){
             pthread_mutex_lock(&curr_client->s2c_mutex);
-            fwrite(dump_buffer,1,dump_size,curr_client->s2c_fp);
-            printf("%s",dump_buffer);
+            if(dump_buffer)
+            {
+                fwrite(dump_buffer,1,dump_size,curr_client->s2c_fp);
+            }
             fflush(curr_client->s2c_fp);
             pthread_mutex_unlock(&curr_client->s2c_mutex);
 
@@ -558,8 +557,6 @@ void *broadcast_thread(void *arg) {
         buffer_curr = buffer_log_start;
         pthread_mutex_unlock(&log_mutex);
         free(dump_buffer);
-        
-        }
     }
 
     return NULL;
@@ -579,6 +576,7 @@ void client_disconnect(client_info * client){
             client->next->last = client->last;
         }
     }
+    printf("Client %d disconnect\n",client->client_id);
     pthread_mutex_destroy(&client->s2c_mutex);
         remove(client->c2s_path);
         remove(client->s2c_path);

@@ -50,11 +50,11 @@ int main(int argc, char *argv[]){
 
 
     if(sig == SIGRTMIN +1 ){
-        int space_need = snprintf(NULL,0,"./FIFO/FIFO_C2S_%d",client_pid);
+        int space_need = snprintf(NULL,0,"./FIFO_C2S_%d",client_pid);
         char * c2s_path = (char *)malloc(space_need+1);
         char * s2c_path = (char *)malloc(space_need+1);
-        snprintf(c2s_path,space_need+1, "./FIFO/FIFO_C2S_%d",client_pid);
-        snprintf(s2c_path,space_need+1, "./FIFO/FIFO_S2C_%d",client_pid);
+        snprintf(c2s_path,space_need+1, "./FIFO_C2S_%d",client_pid);
+        snprintf(s2c_path,space_need+1, "./FIFO_S2C_%d",client_pid);
         sleep(1);// wait untill the server start fifo;
         FILE * c2s_fp = fopen(c2s_path,"w");
         FILE * s2c_fp = fopen(s2c_path,"r");
@@ -142,6 +142,7 @@ int main(int argc, char *argv[]){
                 perror("select");
                 break;
             }
+            uint64_t last_version=0;
 
 
             // Handle user input
@@ -153,7 +154,7 @@ int main(int argc, char *argv[]){
                     }else if(strcmp(cmd_buffer,"LOG?\n")==0){
                         size_t log_size;
                         char * log_content = dump_commandlogs(logs_start,&log_size);
-                        if(log_content == NULL) printf("\n");
+                        if(log_content == NULL);
                         else printf("%s\n",log_content);
                         free(log_content);
                     }else if(strcmp(cmd_buffer,"DISCONNECT\n")==0){
@@ -205,7 +206,10 @@ int main(int argc, char *argv[]){
 
                         while (fgets(cmd_buffer, MAX_COMMAND_LENGTH, s2c_fp) != NULL) {
                             if(strcmp(cmd_buffer, "END\n") == 0) {
-                                markdown_increment_version(doc);
+                                if(input_version == last_version+1){
+                                    markdown_increment_version(doc);
+                                }
+                                last_version = input_version;
                                 break;
                             }
 

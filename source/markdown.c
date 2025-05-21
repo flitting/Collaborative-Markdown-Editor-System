@@ -5,7 +5,7 @@
 // create a empty document
 document * markdown_init(void){
     document * doc = (document*)malloc(sizeof(document));
-    doc->version = 0;
+    doc->version = 1;
     doc->start_empty_chunk = chunk_init("",NULL,NULL);
     // Create an editable initial chunk with empty content.
     chunk * initial_chunk = chunk_init("", doc->start_empty_chunk, NULL);
@@ -70,7 +70,7 @@ int markdown_newline(document *doc, size_t version, size_t pos){
     int version_num = markdown_version_check(doc,version);
     if (version_num < 0) return -1;//wrong version
     
-    const char * newline = "\\n";
+    const char * newline = "\n";
 
     
     size_t left_pos = pos;
@@ -81,8 +81,6 @@ int markdown_newline(document *doc, size_t version, size_t pos){
 
     char * insert_newline = (char*)malloc(strlen(newline)+1);
     strcpy(insert_newline,newline);
-    //debug
-    printf("debug newline insert pos %ld\n",left_pos);
     int result_num = chunk_insert(obj,left_pos,insert_newline,version_num,0);
     free(insert_newline);
 
@@ -355,9 +353,10 @@ int markdown_link(document *doc, uint64_t version, size_t start, size_t end, con
 
 // === Utilities ===
 void markdown_print(const document *doc, FILE *stream){
-    const char * result = markdown_flatten(doc);
+    char * result = markdown_flatten(doc);
     fputs(result,stream);
     fputs("\n",stream);
+    free(result);
     
 }
 char *markdown_flatten(const document *doc){
@@ -369,7 +368,9 @@ char *markdown_flatten(const document *doc){
         strcpy(result, doc->flatten_cache);
         return result;
     }else{
-        return "";
+        char * result = (char *)malloc(1);
+        result[0]='\0';
+        return result;
     }
 
 }
@@ -804,6 +805,15 @@ int is_deleted_status(char s,int version) {
     else return s == DELETE_OLD || s == DELETE_NEW || s == DEL_INS || s == DEL_MOD;
 }
 
+int is_status_can_be_seen(char s,int version){
+    if(version == 0) return s == (s == STILL || s == DELETE_OLD || s == MODIFIED_OLD ||
+                s == DELETE_NEW || s == MODIFIED_NEW || s == DEL_MOD);
+    else if (version == 1) return s != DELETE_OLD && s!= INSERT_NEW;
+    else return (s != DELETE_OLD && s != DELETE_NEW &&
+                s != DEL_INS && s != DEL_MOD);
+}
+
+
 // func for search the first non deleting char before insert into delete range
 void find_insert_point(chunk *ck, size_t base_index, int direction, chunk **out_chunk, size_t *out_index,int version) {
     if (!ck || !ck->content || !ck->status) {
@@ -811,10 +821,6 @@ void find_insert_point(chunk *ck, size_t base_index, int direction, chunk **out_
         *out_index = 0;
         return;
     }
-
-
-
-
 
     if (direction == 0) {
         if(ck->chunk_length-1 == base_index){
@@ -835,12 +841,15 @@ void find_insert_point(chunk *ck, size_t base_index, int direction, chunk **out_
             return;
         }
 
-        // find first non deleting char
+        // find first non deleting acceptable char
         for (ssize_t i = (ssize_t)base_index - 1; i >= 0; --i) {
             if (!is_deleted_status(ck->status[i],version)) {
-                *out_chunk = ck;
-                *out_index = i + 1;
-                return;
+                if(is_status_can_be_seen(ck->status[i],version))
+                {
+                    *out_chunk = ck;
+                    *out_index = i + 1;
+                    return;
+                }
             }
         }
         // find in the last chunk
@@ -862,9 +871,12 @@ void find_insert_point(chunk *ck, size_t base_index, int direction, chunk **out_
         size_t len = strlen(ck->content);
         for (size_t i = base_index; i < len; ++i) {
             if (!is_deleted_status(ck->status[i],version)) {
-                *out_chunk = ck;
-                *out_index = i;
-                return;
+                if(is_status_can_be_seen(ck->status[i],version))
+                {
+                    *out_chunk = ck;
+                    *out_index = i;
+                    return;
+                }
             }
         }
         

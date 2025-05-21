@@ -13,6 +13,7 @@
 #include "markdown.h"
 
 typedef struct client_info {
+    pid_t client_id;
     FILE * c2s_fp;
     FILE * s2c_fp;
     char * s2c_path;

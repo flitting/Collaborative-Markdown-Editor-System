@@ -38,9 +38,14 @@ bold_test:
 	./bold_test
 	rm -f bold_test
 
+defer_test:
+	$(CC) $(CFLAGS) -fsanitize=address test/markdown_def_test.c $(DOCS) -o defer_test
+	./defer_test
+	rm -f defer_test
+
 stop:
 	@pkill -x server || echo "No server instances running."
 	@rm -f server.pid
 clean:
 	@pkill -x server || echo "No server instances running."
-	@rm -f *.o *.out server client server.pid FIFO/* bold_test
+	@rm -f *.o *.out server client server.pid bold_test defer_test FIFO_C2S_* FIFO_S2C_* doc.md
